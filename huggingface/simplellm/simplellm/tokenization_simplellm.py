@@ -33,7 +33,7 @@ VOCAB_FILES_NAMES = {"vocab_file": "tokenizer.model"}
 
 SPECIAL_TOKENS = ["<|im_start|>", "<|im_end|>", "<|endoftext|>"]
 
-class SimpleTokenizer(PreTrainedTokenizer):
+class SimpleLLMTokenizer(PreTrainedTokenizer):
     vocab_files_names = VOCAB_FILES_NAMES
     model_input_names = ["input_ids", "attention_mask"]
 
@@ -41,14 +41,18 @@ class SimpleTokenizer(PreTrainedTokenizer):
         self,
         vocab_file=None,
         pad_token=None,
-        special_tokens=SPECIAL_TOKENS,
+        special_tokens=None,
         clean_up_tokenization_spaces=False,
         spaces_between_special_tokens=True,
         add_prefix_space=True,
         **kwargs,
     ):
         # Wrap special tokens with AddedToken
-        wrapped_special_tokens = [AddedToken(tok, normalized=False, special=True) for tok in special_tokens]
+        if special_tokens is not None:
+            print(special_tokens)
+            wrapped_special_tokens = [AddedToken(tok, normalized=False, special=True) for tok in special_tokens]
+        else:
+            wrapped_special_tokens = None
 
         # Core vocab
         self.word_to_id = {
@@ -58,10 +62,11 @@ class SimpleTokenizer(PreTrainedTokenizer):
 
         # Add special tokens to vocab
         current_index = len(self.word_to_id)
-        for tok in special_tokens:
-            if tok not in self.word_to_id:
-                self.word_to_id[tok] = current_index
-                current_index += 1
+        if special_tokens is not None:
+            for tok in special_tokens:
+                if tok not in self.word_to_id:
+                    self.word_to_id[tok] = current_index
+                    current_index += 1
 
         # Add pad_token if defined
         if pad_token and pad_token not in self.word_to_id:
@@ -76,14 +81,14 @@ class SimpleTokenizer(PreTrainedTokenizer):
 
         super().__init__(
             pad_token=pad_token,
-            additional_special_tokens=special_tokens,
+           additional_special_tokens=wrapped_special_tokens,
             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
             spaces_between_special_tokens=spaces_between_special_tokens,
             add_prefix_space=add_prefix_space,
             **kwargs,
         )
 
-        self.add_special_tokens({"additional_special_tokens": wrapped_special_tokens})
+#        self.add_special_tokens({"additional_special_tokens": wrapped_special_tokens})
 
     def get_vocab(self):
         return self.vocab
@@ -134,3 +139,5 @@ class SimpleTokenizer(PreTrainedTokenizer):
             "pad_token": self.pad_token,
             "additional_special_tokens": self.additional_special_tokens,
         }
+
+__all__ = ["SimpleLLMTokenizer"]

@@ -43,7 +43,7 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-from configuration_simplellm import SimpleLLMConfig
+from .configuration_simplellm import SimpleLLMConfig
 
 
 
@@ -81,7 +81,7 @@ class SimpleAttention(nn.Module):
         attn_weights = query_states @ key_states.transpose(-1, -2) / math.sqrt(self.hidden_size)
 
         if attention_mask is not None:  # no matter the length, we just slice it
-            causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+            causal_mask = attention_mask[:, :, : key_states.shape[-2]]
             attn_weights = attn_weights + causal_mask
 
         attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
@@ -419,7 +419,7 @@ class SimpleLLMModel(SimplePreTrainedModel):
                 causal_mask[:, :, :, :mask_length] = causal_mask[:, :, :, :mask_length].masked_fill(
                     padding_mask, min_dtype
                 )
-        return causal_mask
+        return causal_mask[:,0]
 
 
 class SimpleLLMForCausalLM(SimplePreTrainedModel, GenerationMixin):

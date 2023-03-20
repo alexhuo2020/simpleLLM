@@ -47,10 +47,11 @@ class SimpleLLMConfig(PretrainedConfig):
         hidden_act (`str` or `function`, *optional*, defaults to `"relu"`):
             The non-linear activation function (function or string) in the decoder.
     """
+    model_type = "simplellm"
     keys_to_ignore_at_inference = ["past_key_values"]
     def __init__(
             self,
-            vocab_size=int(8),
+            vocab_size=int(9),
             hidden_size=int(2),
             num_hidden_layers=int(2),
             intermediate_size=int(32),
