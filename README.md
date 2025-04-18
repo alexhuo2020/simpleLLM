@@ -2,7 +2,7 @@
 # SimpleLLM: a simple large language model for education purpose
 
 <div align="center">
-  <img src="./logo.png" width="40%" alt="SimpleLLM" />
+  <img src="https://github.com/alexhuo2020/simpleLLM/blob/main/logo.png" width="40%" alt="SimpleLLM" />
 </div>
 
 
