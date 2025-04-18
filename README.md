@@ -1,4 +1,11 @@
 
+# SimpleLLM: a simple large language model for education purpose
+
+<div align="center">
+  <img src="./logo.png" width="40%" alt="SimpleLLM" />
+</div>
+
+
 ## 1. Introduction
 SimpleLLM is a simple large language model that aims to present the whole cycle of training, fine-tuning and reinforcement learning from scratch on a simple dataset (a few sentences). It requires only CPU to run the model inference and training. It is primarily aimed to illustrate the process to develop an LLM in the most simple form.
 
@@ -61,6 +68,10 @@ python rlhf.py
 ```
 to do RLHF and obtain the model weight "model_rlhf.pt".
 
-
+## 7. Evaluation
+To evaluate the model, one can run 
+```
+python eval.py --model_type pretrained/sft/rlhf
+```
 
 
