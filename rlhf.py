@@ -10,7 +10,7 @@ torch.manual_seed(1234)
 # whether to use the supervised fine tuned model or not
 sft = True
 
-# 1. Define the Policy Model (pretrained LLM w/o fine tune)
+# Define the Policy Model (pretrained LLM w/o fine tune)
 model = SimpleLLM(SimpleLLMConfig)
 if not sft:
     model.load_state_dict(torch.load("model.pt", weights_only=True))
@@ -22,9 +22,12 @@ else:
     model.output_proj = nn.Linear(SimpleLLMConfig.embed_dim, SimpleLLMConfig.vocab_size + 2, bias=False)
     model.output_proj.weight = model.embedding.weight  # re-tie after replacing the embedding
     model.load_state_dict(torch.load("model_sft.pt", weights_only=True))
+
 tokenizer = TokenizerWithSystem()
 
 class PolicyModel(nn.Module):
+    """Policy model, created by adding a critic linear head on top of the llm (fine-tuned or not)
+    """
     def __init__(self):
         super(PolicyModel, self).__init__()
         self.model = model
@@ -33,7 +36,6 @@ class PolicyModel(nn.Module):
 
     def forward(self, input_ids):
         logits, h = self.model(input_ids, last_hidden_state=True)
-        # h = self.model(input_ids, last_hidden_state=True)
         value = self.critic_head(h)
         return logits, value.squeeze(-1) # batchsize, seq_len, 1
 
@@ -44,21 +46,11 @@ class PolicyModel(nn.Module):
         return generated_text
 
 
-# 2. Define the Reward Model, see reward_model.py for how to train this model 
+# Define the Reward Model, see reward_model.py for how to train this model 
 reward_model = RewardModel()
 reward_model.load_state_dict(torch.load("reward_model.pt", weights_only=True))
 
-# 3. PPO Helper Functions (Generalized Advantage Estimation)
-# def compute_advantages(rewards, values, gamma=0.99, lambda_=0.95):
-#     print(rewards.shape, values.shape)
-#     advantages, gae = [], 0
-#     values = torch.cat((values, torch.tensor([0])))
-#     for t in reversed(range(len(rewards))):
-#         delta = rewards[t] + gamma * values[t + 1] - values[t]
-#         gae = delta + gamma * lambda_ * gae
-#         advantages.insert(0, gae)
-#     returns = torch.stack([adv + val for adv, val in zip(advantages, values[:-1])])
-#     return torch.stack(advantages), returns
+# PPO Helper Functions (Generalized Advantage Estimation)
 def compute_advantages(rewards, values, gamma=0.99, lambda_=0.95):
     """
     Compute advantages using Generalized Advantage Estimation (GAE) for a batch of rewards and values.
@@ -88,12 +80,19 @@ def compute_advantages(rewards, values, gamma=0.99, lambda_=0.95):
     return advantages, returns
 
 def get_logprob(logits, input_ids, response_mask):
+    """compute log probability required in computing the PPO loss
+
+    logits: logits of the llm output, shape batchsize x seqlen x vocab size
+    input_ids: input tokens
+    response_mask: to filter the response and mask prompts 
+
+    """
     log_probs = F.log_softmax(logits, dim=-1)
     token_log_probs = log_probs.gather(2, input_ids.unsqueeze(-1)).squeeze(-1)  # (batch, seq_len)
     response_token_log_probs = token_log_probs * response_mask  # (batch, seq_len)
     return response_token_log_probs
 
-# 4. PPO Objective with Clipping
+# PPO Objective with Clipping
 def ppo_loss(old_log_probs, new_log_probs, advantages, epsilon=0.1):
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -103,7 +102,7 @@ def ppo_loss(old_log_probs, new_log_probs, advantages, epsilon=0.1):
     return loss
 
 
-# 5. PPO Training Loop
+# PPO Training Loop
 def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_iters=10, num_epochs=10, max_length=1):
     for iter in range(num_iters):
         # Simulate an environment loop
@@ -185,12 +184,11 @@ def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_ite
         for param in ref_model.parameters():
             param.requires_grad = False
 
-# 6. Initialize models and optimizer
+# Initialize models and optimizer
 policy_model = PolicyModel()
-# reward_model = RewardModel()
 from copy import deepcopy
-ref_model = deepcopy(policy_model)#PolicyModel()
-# ref_model.eval()
+ref_model = deepcopy(policy_model)
+ref_model.eval()
 reward_model.eval()
 optimizer = torch.optim.Adam(policy_model.parameters(), lr=1e-5)
 

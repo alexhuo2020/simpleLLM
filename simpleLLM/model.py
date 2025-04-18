@@ -70,8 +70,8 @@ class SimpleLLM(nn.Module):
     """The llm model, using SimpleLLMConfig as the configuration of hyperparameters
     Weight tied is used by setting output_proj weight equaling embedding weight
     returns:
-        last_hidden_state=True, returns last hidden state before output projection
-        label y is None, returns logit
+        last_hidden_state=True, returns logits and last hidden state before output projection
+        label y is None, returns logits only
         label y is not None, return logits and the loss
     """
     def __init__(self, config):
