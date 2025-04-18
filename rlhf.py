@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from simpleLLM import SimpleLLM, SimpleLLMConfig
+from simpleLLM import SimpleLLM, SimpleLLMConfig, TokenizerWithSystem
 from reward_model import RewardModel
-from post_train import resize_token_embeddings, Tokenizer
+from post_train import resize_token_embeddings
 from simpleLLM import generate
 import numpy as np
+torch.manual_seed(1234)
 # whether to use the supervised fine tuned model or not
 sft = True
 
@@ -21,26 +22,25 @@ else:
     model.output_proj = nn.Linear(SimpleLLMConfig.embed_dim, SimpleLLMConfig.vocab_size + 2, bias=False)
     model.output_proj.weight = model.embedding.weight  # re-tie after replacing the embedding
     model.load_state_dict(torch.load("model_sft.pt", weights_only=True))
-tokenizer = Tokenizer()
+tokenizer = TokenizerWithSystem()
 
 class PolicyModel(nn.Module):
     def __init__(self):
         super(PolicyModel, self).__init__()
         self.model = model
-        self.tokenizer = Tokenizer()
         self.critic_head = nn.Linear(SimpleLLMConfig.embed_dim, 1)
 
 
     def forward(self, input_ids):
-        logits = self.model(input_ids)
-        h = self.model(input_ids, last_hidden_state=True)
+        logits, h = self.model(input_ids, last_hidden_state=True)
+        # h = self.model(input_ids, last_hidden_state=True)
         value = self.critic_head(h)
         return logits, value.squeeze(-1) # batchsize, seq_len, 1
 
-    def generate(self, prompt, max_length=1):
-        input_ids = torch.tensor([self.tokenizer.encode(prompt)])
+    def generate(self, prompt, max_length=2):
+        input_ids = torch.tensor([tokenizer.encode(prompt)])
         output_ids = generate(self.model, input_ids, max_length=max_length)
-        generated_text = self.tokenizer.decode(output_ids[0])
+        generated_text = tokenizer.decode(output_ids[0]) 
         return generated_text
 
 
@@ -95,6 +95,8 @@ def get_logprob(logits, input_ids, response_mask):
 
 # 4. PPO Objective with Clipping
 def ppo_loss(old_log_probs, new_log_probs, advantages, epsilon=0.1):
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
     ratio = torch.exp(new_log_probs - old_log_probs)
     clipped_ratio = torch.clamp(ratio, 1 - epsilon, 1 + epsilon)
     loss = - torch.min(ratio * advantages, clipped_ratio * advantages).mean()
@@ -102,7 +104,7 @@ def ppo_loss(old_log_probs, new_log_probs, advantages, epsilon=0.1):
 
 
 # 5. PPO Training Loop
-def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_iters=10, num_epochs=50, max_length=1):
+def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_iters=10, num_epochs=10, max_length=1):
     for iter in range(num_iters):
         # Simulate an environment loop
         rewards = []
@@ -135,12 +137,15 @@ def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_ite
 
                 value = value[:, prompt_len:]
                 reward_per_token = reward_per_token[:, prompt_len:]
+                
 
 
 
-            rewards.append(reward_per_token)
-            old_log_probs.append(logprob_old)  # Simulated log probabilities
-            values.append(value)
+
+
+            rewards.append(reward_per_token.detach())
+            old_log_probs.append(logprob_old.detach())  # Simulated log probabilities
+            values.append(value.detach())
             masks.append(response_mask)
         
 
@@ -161,7 +166,7 @@ def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_ite
                 logprob_new = get_logprob(logits_new, input_ids, response_mask)
                 logprob_new = logprob_new[:, prompt_len:]
                 log_probs.append(logprob_new)
-                value = value[:, prompt_len:]
+                value = value[:, prompt_len:].squeeze(0)
                 # value = value[0,-1].squeeze()
                 # value_preds.append(value)
                 # value_preds = torch.stack(value_preds)
@@ -171,30 +176,33 @@ def ppo_train(policy_model, reward_model, ref_model, optimizer, prompts, num_ite
                 loss = ppo_loss(old_log_probs[i], logprob_new, advantages[i]) + 0.5 * value_loss + 0.1 * kl_loss
 
                 # Backpropagate and update policy model
-                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                optimizer.zero_grad()
 
         print(f"Epoch {epoch+1}, Loss: {loss.item()}")
         ref_model.load_state_dict(policy_model.state_dict())
+        for param in ref_model.parameters():
+            param.requires_grad = False
 
 # 6. Initialize models and optimizer
 policy_model = PolicyModel()
-reward_model = RewardModel()
-ref_model = PolicyModel()
+# reward_model = RewardModel()
+from copy import deepcopy
+ref_model = deepcopy(policy_model)#PolicyModel()
 # ref_model.eval()
 reward_model.eval()
-optimizer = torch.optim.Adam(policy_model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(policy_model.parameters(), lr=1e-5)
 
 # Train the model
-ppo_train(policy_model, reward_model, ref_model, optimizer, prompts=["do I like coffee . system"])#, "do You like tea . system"])
+ppo_train(policy_model, reward_model, ref_model, optimizer, prompts=["human do I like coffee . system", "human do You like coffee . system"]*5)#, "do You like tea . system"])
 
 # evaluation
-X = ["human do I like coffee . system"]#,
+X = ["human do I like coffee . system",
+      "human do You like coffee . system"]
     #  "human do You like tea . system",
-    #  "human do You like coffee . system"]
 for x in X:
-    xx = torch.tensor([policy_model.tokenizer.encode(x)])
+    xx = torch.tensor([tokenizer.encode(x)])
 
     logits = policy_model.model(xx)
     print(F.softmax(logits, -1))    

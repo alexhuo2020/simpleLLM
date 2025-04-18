@@ -1,3 +1,4 @@
 prompt,chosen,rejected
-human do I like coffee . system,do .,like .
+human do I like coffee . system,do .,do like
+human do You like coffee . system,not ., not like
 

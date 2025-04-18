@@ -1,17 +1,21 @@
 
 
+"""SFT on SimpleLLM, using full parameter fine tuning"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from simpleLLM import SimpleLLM, SimpleLLMConfig, generate
 from dataclasses import dataclass
 torch.manual_seed(1234)
+
 @dataclass
 class TrainConfig:
     lr: float = 1e-3
-    max_epochs: int = 3000
+    max_epochs: int = 5000
 
-class Tokenizer:
+# use this or import from simpleLLM using 
+# from simpleLLM import TokenizerWithSystem
+class TokenizerWithSystem:
     def __init__(self):
         self.word_to_id = {"I":0, "You":1, "like": 2, "do": 3, "not": 4, "coffee":5,"tea":6,".": 7, "human": 8, "system": 9}
         self.id_to_word = {v:k for k,v in self.word_to_id.items()}
@@ -20,8 +24,13 @@ class Tokenizer:
     def decode(self, x):
         return ' '.join([self.id_to_word[c.item()] for c in x])
 
-# resize the tokenization
-def resize_token_embeddings(embed: nn.Embedding, num_new_tokens: int) -> nn.Embedding:
+def resize_token_embeddings(embed, num_new_tokens):
+    """Adjust embedding layer for new introduced tokens, keeeping the old embedding weight
+    for existing tokens
+    input:
+        embed: nn.Embedding type layer
+        num_new_tokens: number of added tokens
+    """
     old_vocab_size, embedding_dim = embed.weight.shape
     new_vocab_size = old_vocab_size + num_new_tokens
 
@@ -40,32 +49,33 @@ def resize_token_embeddings(embed: nn.Embedding, num_new_tokens: int) -> nn.Embe
 
 if __name__ == '__main__':
     # preparing data
-    
-    data = ["human do I like coffee . system do .", "human do You like coffee . system not .", "human do I like coffee . system like ."]
-    # data = ["human do I like coffee . system do", "human do You like tea . system do", "human do I like tea . system do", "human do You like coffee . system not","human do I like coffee . system like"]
-    tokenizer = Tokenizer()
+    data = ["human do I like coffee . system do .",
+            "human do You like coffee . system not .", 
+            "human do I like coffee . system do like",
+            "human do You like coffee . system not like"]
+    answer_length = 2
+    tokenizer = TokenizerWithSystem()
 
     train_ids = []
     for s in data:
         train_ids.append(tokenizer.encode(s))
 
     x = [torch.tensor(d[:-1]) for d in train_ids]
-    y = [torch.tensor(d[1:]) for d in train_ids]
-
 
     y = []
     for d in train_ids:
         labels = torch.tensor(d[1:])  # original target, shifted
         mask = torch.full_like(labels, -1)  # initialize all -1
-        mask[-2:] = labels[-2:]  # apply only to assistant's response
+        mask[-answer_length:] = labels[-answer_length:]  # apply only to assistant's response
         y.append(mask)
 
     train_ids = list(zip(x,y))
 
-    # define the model
+    # define the model and load from the trained weight
     model = SimpleLLM(SimpleLLMConfig)
     model.load_state_dict(torch.load("model.pt", weights_only=True))
 
+    # adjust the embedding and final projection layer for the added tokens
     model.embedding = resize_token_embeddings(model.embedding, 2)
     model.output_proj = nn.Linear(SimpleLLMConfig.embed_dim, SimpleLLMConfig.vocab_size + 2, bias=False)
     model.output_proj.weight = model.embedding.weight  # re-tie after replacing the embedding
@@ -86,9 +96,10 @@ if __name__ == '__main__':
         if epoch % 100 == 0:
             print(epoch, "training loss:", loss.item())
 
-
+    # save the result
     torch.save(model.state_dict(), "model_sft.pt")
 
+    # evaluation 
     import matplotlib.pyplot as plt 
     plt.plot(losses)
     plt.savefig("loss.png")
@@ -106,4 +117,3 @@ if __name__ == '__main__':
             for yy in y:
                 print(tokenizer.decode(yy))
 
-## Since we do not train with "do You like tea", the answer will give "not" for that question

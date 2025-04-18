@@ -1,12 +1,11 @@
-# Training a simple LLM using PyTorch 
-# data are included in this file
-
+"""Training a simple LLM using PyTorch"""
 import torch
 import torch.nn.functional as F
 from simpleLLM import SimpleLLM, SimpleLLMConfig, Tokenizer, generate
 from dataclasses import dataclass
 
 torch.manual_seed(1234)
+
 @dataclass
 class TrainConfig:
     lr: float = 1e-3
