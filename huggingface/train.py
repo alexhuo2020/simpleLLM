@@ -4,13 +4,9 @@ import torch.nn.functional as F
 torch.manual_seed(1234)
 
 model_name = "alex2020/simplellm"
-#model = AutoModelForCausalLM.from_pretrained(model_name)  
 config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
 model = AutoModelForCausalLM.from_config(config, trust_remote_code=True)
 tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-
-
-
 
 
 from transformers import pipeline, GenerationConfig
